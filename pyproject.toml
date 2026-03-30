@@ -27,6 +27,7 @@ name = "dogbolt-cli"
 version = "0.1.2"
 description = "A CLI for Dogbolt. Uploads your binary and downloads decompiled source code."
 authors = [
+    { name = "mu-b", email = "mu-b@digit-labs.org" },
     { name = "itachichrist", email = "itachichrist@gmail.com" },
     { name = "Jacek Wielemborek", email = "gh@d33.pl" }
 ]
