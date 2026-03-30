@@ -1,41 +1,63 @@
-# dogbolt CLI in Python
+# dogbolt-cli
 
-upload an executable binary file to dogbolt.org  
-and download all decompiled source files to src/
+A CLI for [dogbolt.org](https://dogbolt.org). Uploads a binary and downloads
+decompiled source files.
+
+## Install
 
 ```
-binary path: test
-binary size: 15760
-binary hash: sha256:8c307ffd4198b34b5bdc5ad93ebb9606ff92a8154e9c558898d2c19172be70bf
-uploading binary
-binary id: 874c5de3-a98d-40d4-bae3-14ce5cadbe69
-fetching decompiler names
-decompiler names: BinaryNinja Boomerang Ghidra Hex-Rays RecStudio Reko Relyze RetDec Snowman angr dewolf
-fetching results
-writing src/boomerang-0.5.2/error.txt
-writing src/recstudio-4.1/test.c
-fetched 2 of 11 results. retrying in 20 seconds
-fetching results
-writing src/binary-ninja-3.5.4526/test.c
-writing src/reko-0.11.2.0/test.c
-fetched 4 of 11 results. retrying in 20 seconds
-fetching results
-writing src/hex-rays-8.3.0.230608/test.c
-writing src/dewolf-0.1.3/error.txt
-fetched 6 of 11 results. retrying in 20 seconds
-fetching results
-writing src/snowman-0.1.2-21/test.cpp
-writing src/retdec-4.0-446/test.c
-fetched 8 of 11 results. retrying in 20 seconds
-fetching results
-writing src/ghidra-10.3.3/test.c
-writing src/relyze-3.7.0/test.c
-writing src/angr-9.2.70/test.c
-fetched all results
+pip install dogbolt-cli
 ```
 
+Or from source:
+
+```
+pip install .
+```
+
+## Usage
+
+```
+db -f <binary> [-o <output-dir>] [-d <decompilers>] [-v]
+```
+
+| Option | Description |
+|---|---|
+| `-f`, `--file-path` | Path to the binary (required, max 2 MB) |
+| `-o`, `--output-dir` | Directory to save results (default: `src/` next to the binary) |
+| `-d`, `--decompilers` | Comma-separated list of decompilers (default: BinaryNinja,Ghidra,Hex-Rays) |
+| `-v`, `--verbose` | Print additional info, including all decompilers available on the API |
+
+### Example
+
+```
+$ db -f test
+src/binary-ninja.c
+src/ghidra.c
+src/hex-rays.c
+```
+
+With `-v` to see progress and all decompilers available from the API:
+
+```
+$ db -f test -v
+db: uploading test (15760 bytes)
+db: binary id: 874c5de3-a98d-40d4-bae3-14ce5cadbe69
+db: available decompilers: BinaryNinja, Boomerang, Ghidra, Hex-Rays, RecStudio, Reko, Relyze, RetDec, Snowman, angr, dewolf
+db: using decompilers: BinaryNinja, Ghidra, Hex-Rays
+db: fetching results...
+db: fetched 1/3, retrying in 30s
+db: fetching results...
+src/binary-ninja.c
+src/ghidra.c
+db: fetched 2/3, retrying in 30s
+db: fetching results...
+src/hex-rays.c
+```
 
 ## Credits
-- Telegram: @itachichrist
-- Github: [itachicoders](github.com/itachicoders)
-- The code was borrowed from [github.com/milahu/dogbolt-cli-client-bash](https://github.com/milahu/dogbolt-cli-client-bash)
+
+- mu-b — [github.com/mu-b](https://github.com/mu-b)
+- itachichrist — [github.com/itachicoders](https://github.com/itachicoders)
+- Jacek Wielemborek
+- Inspired by [dogbolt-cli-client-bash](https://github.com/milahu/dogbolt-cli-client-bash)

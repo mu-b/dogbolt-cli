@@ -1,12 +1,22 @@
 #!/usr/bin/env python3
+"""
+dogbolt-cli — upload a binary to dogbolt.org and download decompiled sources.
+
+Usage:
+    db -f <binary> [-o <output-dir>] [-d <decompilers>] [-v]
+
+See db --help for full options.
+"""
 
 import os
+import sys
 import time
 import json
-import logging as L
 import argparse
 
 import requests
+
+PROG = os.path.basename(sys.argv[0])
 
 RETRY_SLEEP = 30
 RETRY_COUNT = 10
@@ -20,20 +30,29 @@ DECOMPILER_NAMES = {
 
 DEFAULT_DECOMPILERS = set(DECOMPILER_NAMES.keys())
 
-def upload_binary(file_path):
-    file_size = os.path.getsize(file_path)
-    L.info(f"Binary path: {file_path}, size: {file_size}")
-    if file_size > 2 * 1024 * 1024:
-        L.error("Binary is too large (must be smaller than 2 MB)")
-        exit(1)
 
-    L.info("Uploading binary...")
+def log(msg, verbose):
+    if verbose:
+        print(f"{PROG}: {msg}", file=sys.stderr)
+
+
+def err(msg):
+    print(f"{PROG}: {msg}", file=sys.stderr)
+
+
+def upload_binary(file_path, verbose):
+    file_size = os.path.getsize(file_path)
+    log(f"uploading {file_path} ({file_size} bytes)", verbose)
+    if file_size > 2 * 1024 * 1024:
+        err("binary is too large (must be smaller than 2 MB)")
+        sys.exit(1)
+
     response = requests.post(
         "https://dogbolt.org/api/binaries/",
         files={"file": open(file_path, "rb")},
     )
     binary_id = response.json().get("id")
-    L.info(f"Binary id: {binary_id}")
+    log(f"binary id: {binary_id}", verbose)
     return binary_id
 
 
@@ -44,6 +63,7 @@ def download_result(
     binary_id,
     output_dir,
     decompilers,
+    verbose,
 ):
     decompiler_name = result["decompiler"]["name"]
     decompiler_version = result["decompiler"]["version"]
@@ -68,13 +88,14 @@ def download_result(
             request_count_by_decompiler_key.get(decompiler_key, 0)
             >= REQUESTS_PER_DECOMPILER
         ):
-            L.warning(f"Timeout from decompiler {decompiler_key}, giving up")
+            err(f"{decompiler_key}: timeout, giving up")
+            done_decompiler_keys.add(decompiler_key)
             return
         request_count_by_decompiler_key[decompiler_key] = (
             request_count_by_decompiler_key.get(decompiler_key, 0) + 1
         )
-        L.warning(
-            f"Timeout from decompiler {decompiler_key}, retrying "
+        err(
+            f"{decompiler_key}: timeout, retrying "
             f"({request_count_by_decompiler_key[decompiler_key]}/{REQUESTS_PER_DECOMPILER})"
         )
         requests.post(
@@ -83,25 +104,25 @@ def download_result(
         )
         return
     elif error:
-        L.error(f"Decompilation failed for {decompiler_name}-{decompiler_version}: {error}")
-        with open(os.path.join(output_dir, f"{decompiler_name}-{decompiler_version}-error.txt"), "w") as f:
+        err(f"{decompiler_key}: {error}")
+        with open(os.path.join(output_dir, f"{decompiler_key}-error.txt"), "w") as f:
             f.write(error)
         done_decompiler_keys.add(decompiler_key)
         return
 
-    L.info(f"Writing {output_path}")
     with open(output_path, "wb") as f:
         f.write(requests.get(result["download_url"]).content)
+    print(output_path)
 
     done_decompiler_keys.add(decompiler_key)
 
 
 def dogbolt_decompile(file_path, output_dir=None, decompilers=None, verbose=False):
     if not file_path or not os.path.isfile(file_path):
-        L.error("Invalid file path.")
-        exit(1)
+        err("invalid file path")
+        sys.exit(1)
 
-    binary_id = upload_binary(file_path)
+    binary_id = upload_binary(file_path, verbose)
 
     response = requests.get("https://dogbolt.org/")
     decompilers_json = json.loads(
@@ -112,7 +133,7 @@ def dogbolt_decompile(file_path, output_dir=None, decompilers=None, verbose=Fals
     api_decompilers = set(decompilers_json.keys())
 
     if verbose:
-        L.info(f"Available decompilers: {', '.join(sorted(api_decompilers))}")
+        log(f"available decompilers: {', '.join(sorted(api_decompilers))}", verbose)
 
     if output_dir is None:
         output_dir = os.path.join(os.path.dirname(file_path), "src")
@@ -121,20 +142,20 @@ def dogbolt_decompile(file_path, output_dir=None, decompilers=None, verbose=Fals
         decompilers = DEFAULT_DECOMPILERS & api_decompilers
         unavailable = DEFAULT_DECOMPILERS - api_decompilers
         if unavailable:
-            L.warning(f"Decompilers not available on API: {', '.join(sorted(unavailable))}")
+            err(f"not available on API: {', '.join(sorted(unavailable))}")
     else:
         unknown = decompilers - api_decompilers
         if unknown:
-            L.warning(f"Unknown decompilers: {', '.join(sorted(unknown))}")
+            err(f"unknown decompilers: {', '.join(sorted(unknown))}")
         decompilers &= api_decompilers
 
-    L.info(f"Using decompilers: {', '.join(sorted(decompilers))}")
+    log(f"using decompilers: {', '.join(sorted(decompilers))}", verbose)
 
     done_decompiler_keys = set()
     request_count_by_decompiler_key = {}
 
     for _retry_step in range(RETRY_COUNT):
-        L.info("Fetching results...")
+        log("fetching results...", verbose)
         response = requests.get(
             f"https://dogbolt.org/api/binaries/{binary_id}/"
             "decompilations/?completed=true"
@@ -147,15 +168,16 @@ def dogbolt_decompile(file_path, output_dir=None, decompilers=None, verbose=Fals
                 binary_id,
                 output_dir,
                 decompilers,
+                verbose,
             )
 
         if len(done_decompiler_keys) == len(decompilers):
-            L.info("All results fetched")
             break
 
-        L.info(
-            f"Fetched {len(done_decompiler_keys)}/{len(decompilers)} results,"
-            f" retrying in {RETRY_SLEEP}s"
+        log(
+            f"fetched {len(done_decompiler_keys)}/{len(decompilers)},"
+            f" retrying in {RETRY_SLEEP}s",
+            verbose,
         )
         time.sleep(RETRY_SLEEP)
 
@@ -184,7 +206,6 @@ def parse_args():
 
 
 def main():
-    L.basicConfig(level=L.INFO)
     dogbolt_decompile(**parse_args())
 
 if __name__ == "__main__":
